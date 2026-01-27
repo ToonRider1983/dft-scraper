@@ -167,7 +167,7 @@ async function scrapeCompaniesFromData(data, startIndex, endIndex, page) {
   return data
 }
 
-async function exportToExcel(data,, startIndex, endIndex, filename) {
+async function exportToExcel(data, startIndex, endIndex, filename) {
   try {
     if (!Array.isArray(data)) {
       throw new Error("Data must be an array of objects");
