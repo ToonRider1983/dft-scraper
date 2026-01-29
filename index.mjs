@@ -16,7 +16,7 @@ chromium.use(stealth());
 const login_url = process.env.LOGIN_URL || "https://www.dataforthai.com/member/login";
 const base_url = process.env.BASE_URL || "https://www.dataforthai.com/company/";
 const start_index = process.env.START_INDEX;
-const end_index =  process.env.END_INDEX;
+const end_index = process.env.END_INDEX;
 
 // YOUR CREDENTIALS HERE
 const USERNAME = "freeman112002@hotmail.com";
@@ -251,68 +251,76 @@ async function ReZero_First(DataRecord) {
 }
 
 async function FindCompany_Phone(page, DataRecord, Thai_Tax_ID) {
-  if (DataRecord.toString()[0] != '0' &&
-    DataRecord.toString()[0] != '+' &&
-    DataRecord.toString()[0] != '(') {
-    const url = `${base_url}/${Thai_Tax_ID}`;
-    console.log(`🔎 Opening ${url}`);
+  try {
+    const _phone = String(DataRecord);
 
-    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+    if (
+        (_phone[0] !== '0' && _phone[0] !== '+' &&
+          _phone[0] !== '(' && _phone === 'null'
+        ) 
+      ) {
+      const url = `${base_url}/${Thai_Tax_ID}`;
+      console.log(`🔎 Opening ${url}`);
 
-    const passed = await waitForCloudflare(page);
-    if (!passed) {
-      console.log("❌ Cloudflare not passed, skipping");
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
+
+      const passed = await waitForCloudflare(page);
+      if (!passed) {
+        console.log("❌ Cloudflare not passed, skipping");
+      }
+
+      // --- TRIGGER REVEAL ---
+      await page.evaluate(() => {
+        const btns = document.querySelectorAll('button[onclick*="show_contact_click"]');
+        btns.forEach(btn => btn.click());
+      });
+
+      // --- WAIT FOR PHONE PATTERN ---
+      await page.waitForFunction(() => {
+        // Looks for any cell containing at least one digit after the button click
+        const tds = Array.from(document.querySelectorAll('td'));
+        const phoneTd = tds.find(td => td.innerText.trim() === 'โทร');
+        return phoneTd && phoneTd.nextElementSibling && /\d/.test(phoneTd.nextElementSibling.innerText);
+      }, { timeout: 10000 }).catch(() => { });
+
+      const companyData = await page.evaluate(() => {
+        const allTds = Array.from(document.querySelectorAll('td'));
+
+        // NEW: Helper to extract ALL phone numbers found in the target cell
+        const getPhones = () => {
+          const targetLabel = allTds.find(td => td.innerText.trim() === 'โทร');
+          if (!targetLabel || !targetLabel.nextElementSibling) return "N/A";
+
+          const rawText = targetLabel.nextElementSibling.innerText;
+          // Regex to find multiple Thai phone formats: 02-xxx-xxxx, 08x-xxx-xxxx, 0-xxxx-xxxx
+          const phoneRegex = /(0-\d{4}-\d{4}|0\d-\d{4}-\d{4}|0\d{1}-\d{3}-\d{4}|02-\d{3}-\d{4})/g;
+          const matches = rawText.match(phoneRegex);
+
+          return matches ? matches.join(', ') : rawText.trim();
+        };
+
+        const getVal = (label) => {
+          const target = allTds.find(td => td.innerText.trim() === label);
+          return target ? target.nextElementSibling?.innerText.trim() : "N/A";
+        };
+
+        return {
+          phone: getPhones(), // Call the multi-phone extractor
+        };
+      });
+      // if (companyData.phone === 'N/A') { }
+
+      let _data = `☎️ ${Thai_Tax_ID} → ${companyData.phone}\n`
+      console.log(_data);
+
+      await sleep(3000);
+      return companyData.phone;
+    } else {
+      console.log("⚠️ Valid phone number, skipping:", Thai_Tax_ID);
+      return "-";
     }
-
-    // --- TRIGGER REVEAL ---
-    await page.evaluate(() => {
-      const btns = document.querySelectorAll('button[onclick*="show_contact_click"]');
-      btns.forEach(btn => btn.click());
-    });
-
-    // --- WAIT FOR PHONE PATTERN ---
-    await page.waitForFunction(() => {
-      // Looks for any cell containing at least one digit after the button click
-      const tds = Array.from(document.querySelectorAll('td'));
-      const phoneTd = tds.find(td => td.innerText.trim() === 'โทร');
-      return phoneTd && phoneTd.nextElementSibling && /\d/.test(phoneTd.nextElementSibling.innerText);
-    }, { timeout: 10000 }).catch(() => { });
-
-    const companyData = await page.evaluate(() => {
-      const allTds = Array.from(document.querySelectorAll('td'));
-
-      // NEW: Helper to extract ALL phone numbers found in the target cell
-      const getPhones = () => {
-        const targetLabel = allTds.find(td => td.innerText.trim() === 'โทร');
-        if (!targetLabel || !targetLabel.nextElementSibling) return "N/A";
-
-        const rawText = targetLabel.nextElementSibling.innerText;
-        // Regex to find multiple Thai phone formats: 02-xxx-xxxx, 08x-xxx-xxxx, 0-xxxx-xxxx
-        const phoneRegex = /(0-\d{4}-\d{4}|0\d-\d{4}-\d{4}|0\d{1}-\d{3}-\d{4}|02-\d{3}-\d{4})/g;
-        const matches = rawText.match(phoneRegex);
-
-        return matches ? matches.join(', ') : rawText.trim();
-      };
-
-      const getVal = (label) => {
-        const target = allTds.find(td => td.innerText.trim() === label);
-        return target ? target.nextElementSibling?.innerText.trim() : "N/A";
-      };
-
-      return {
-        phone: getPhones(), // Call the multi-phone extractor
-      };
-    });
-    // if (companyData.phone === 'N/A') { }
-
-    let _data = `☎️ ${Thai_Tax_ID} → ${companyData.phone}\n`
-    console.log(_data);
-
-    await sleep(3000);
-    return companyData.phone;
-  } else {
-    console.log("⚠️ Valid phone number, skipping:", Thai_Tax_ID);
-    return "-";
+  } catch {
+    return null
   }
 }
 
@@ -358,7 +366,7 @@ async function main() {
 
     await sleep(3000);
     console.log("\nStarting to scrape companies...");
-    
+
     const companies = await scrapeCompaniesFromData(excelData, start_index, end_index, page);
     const filename = process.env.SAVE_FILENAME;
     const exported_status = await exportToExcel(companies, start_index, end_index, filename);
